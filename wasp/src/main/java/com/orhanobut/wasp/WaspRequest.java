@@ -5,17 +5,23 @@ import android.text.TextUtils;
 
 import com.orhanobut.wasp.http.Body;
 import com.orhanobut.wasp.http.BodyMap;
+import com.orhanobut.wasp.http.Field;
+import com.orhanobut.wasp.http.FieldMap;
 import com.orhanobut.wasp.http.Header;
 import com.orhanobut.wasp.http.Path;
 import com.orhanobut.wasp.http.Query;
 import com.orhanobut.wasp.http.QueryMap;
+import com.orhanobut.wasp.parsers.FormUrlEncodingParser;
+import com.orhanobut.wasp.parsers.GsonParser;
 import com.orhanobut.wasp.utils.AuthToken;
 import com.orhanobut.wasp.utils.CollectionUtils;
 import com.orhanobut.wasp.utils.LogLevel;
 import com.orhanobut.wasp.utils.RequestInterceptor;
 import com.orhanobut.wasp.utils.WaspRetryPolicy;
+import com.squareup.okhttp.FormEncodingBuilder;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Array;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -34,6 +40,7 @@ final class WaspRequest {
     private final WaspMock mock;
     private final MethodInfo methodInfo;
     private final LogLevel logLevel;
+    private final String contentType;
 
     private WaspRequest(Builder builder) {
         this.url = builder.getUrl();
@@ -44,6 +51,7 @@ final class WaspRequest {
         this.mock = builder.getMock();
         this.methodInfo = builder.getMethodInfo();
         this.logLevel = Wasp.getLogLevel();
+        this.contentType = builder.getContentType();
     }
 
     String getUrl() {
@@ -93,6 +101,10 @@ final class WaspRequest {
         return methodInfo;
     }
 
+    public String getContentType() {
+        return contentType;
+    }
+
     static class Builder {
 
         private static final String KEY_AUTH = "Authorization";
@@ -107,12 +119,15 @@ final class WaspRequest {
         private Uri.Builder queryParamBuilder;
         private Map<String, String> headers;
         private RequestInterceptor requestInterceptor;
+        private FormEncodingBuilder formEncodingBuilder;
+        private String contentType;
 
         Builder(MethodInfo methodInfo, Object[] args, String baseUrl) {
             this.methodInfo = methodInfo;
             this.baseUrl = baseUrl;
             this.args = args;
             this.relativeUrl = methodInfo.getRelativeUrl();
+            formEncodingBuilder = new FormEncodingBuilder();
 
             initParams();
         }
@@ -177,6 +192,45 @@ final class WaspRequest {
                     }
                     body = CollectionUtils.toJson(map);
                 }
+                if (annotationType == Field.class) {
+                    if (value != null) { //
+                        Field field = (Field) annotation;
+                        String name = field.value();
+                        if (value instanceof Iterable) {
+                            for (Object iterableValue : (Iterable<?>) value) {
+                                if (iterableValue != null) {
+                                    formEncodingBuilder.add(name, iterableValue.toString());
+                                }
+                            }
+                        } else if (value.getClass().isArray()) {
+                            for (int x = 0, arrayLength = Array.getLength(value); x < arrayLength; x++) {
+                                Object arrayValue = Array.get(value, x);
+                                if (arrayValue != null) {
+                                    formEncodingBuilder.add(name, arrayValue.toString());
+                                }
+                            }
+                        } else {
+                            formEncodingBuilder.add(name, value.toString());
+                        }
+                    }
+
+                }
+                if (annotationType == FieldMap.class) {
+                    if (value != null) { // Skip null values.
+                        FieldMap fieldMap = (FieldMap) annotation;
+                        for (Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet()) {
+                            Object entryKey = entry.getKey();
+                            if (entryKey == null) {
+                                throw new IllegalArgumentException(
+                                        "Parameter #" + (i + 1) + " field map contained null key.");
+                            }
+                            Object entryValue = entry.getValue();
+                            if (entryValue != null) { // Skip null values.
+                                formEncodingBuilder.add(entryKey.toString(), entryValue.toString());
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -191,6 +245,14 @@ final class WaspRequest {
          * @return WaspRequest
          */
         WaspRequest build() {
+            if(body==null) {//assumes body is not set
+                if (formEncodingBuilder != null) {
+                    body = formEncodingBuilder.build().toString();
+                    contentType = FormUrlEncodingParser.CONTENT_TYPE;
+                }
+            }else{
+                contentType = GsonParser.CONTENT_TYPE;
+            }
             postInit();
             return new WaspRequest(this);
         }
@@ -316,6 +378,10 @@ final class WaspRequest {
 
         MethodInfo getMethodInfo() {
             return methodInfo;
+        }
+
+        public String getContentType() {
+            return contentType;
         }
     }
 }

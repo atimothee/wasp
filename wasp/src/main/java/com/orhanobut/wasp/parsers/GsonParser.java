@@ -12,7 +12,7 @@ import java.lang.reflect.Type;
  */
 public class GsonParser implements Parser {
 
-    private static final String CONTENT_TYPE = "application/json";
+    public static final String CONTENT_TYPE = "application/json";
 
     private final Gson gson;
 

@@ -30,6 +30,7 @@ final class VolleyNetworkStack implements NetworkStack {
     private static final String METHOD_DELETE = "DELETE";
 
     private final RequestQueue requestQueue;
+    private static String contentType;
 
     private VolleyNetworkStack(Context context, WaspHttpStack stack) {
         requestQueue = Volley.newRequestQueue(context, stack.getHttpStack());
@@ -86,6 +87,7 @@ final class VolleyNetworkStack implements NetworkStack {
 
     @Override
     public <T> void invokeRequest(WaspRequest waspRequest, CallBack<T> callBack) {
+        contentType = waspRequest.getContentType();
         addToQueue(waspRequest, callBack);
     }
 
@@ -147,11 +149,11 @@ final class VolleyNetworkStack implements NetworkStack {
         /**
          * Content type for request.
          */
-        private static final String PROTOCOL_CONTENT_TYPE = String.format(
-                "%1$s; charset=%2$s",
-                Wasp.getParser().getSupportedContentType(),
-                PROTOCOL_CHARSET
-        );
+//        private static final String PROTOCOL_CONTENT_TYPE = String.format(
+//                "%1$s; charset=%2$s",
+//                Wasp.getParser().getSupportedContentType(),
+//                PROTOCOL_CHARSET
+//        );
 
         private final VolleyListener<T> listener;
         private final String requestBody;
@@ -199,7 +201,12 @@ final class VolleyNetworkStack implements NetworkStack {
 
         @Override
         public String getBodyContentType() {
-            return PROTOCOL_CONTENT_TYPE;
+
+            String protocolContentType = String.format("%1$s; charset=%2$s",
+                    contentType,
+                PROTOCOL_CHARSET
+        );
+            return protocolContentType;
         }
 
         @Override
